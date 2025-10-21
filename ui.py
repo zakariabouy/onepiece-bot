@@ -1,8 +1,8 @@
-# ui.py — Streamlit chat UI for One Piece Bot
+# ui.py — Streamlit chat UI for One Piece Bot (single conversational mode)
 
 import streamlit as st
-import torch  # just for the device label
-from core import chat_router, answer_question, load_notes_and_build_index
+import torch
+from core import rag_chat, load_notes_and_build_index
 
 st.set_page_config(page_title="One Piece Chatbot", page_icon="🏴‍☠️", layout="centered")
 
@@ -29,13 +29,7 @@ with st.sidebar:
         load_notes_and_build_index()
         st.success("Index rebuilt.")
 
-    strict_mode = st.toggle(
-        "Strict (no-generation) mode",
-        value=True,
-        help="ON = only grounded answers from your notes. OFF = small talk + fallback to local LLM (Ollama)."
-    )
-    k_val = st.slider("Passages to retrieve (k)", 1, 10, 3)
-
+    k_val = st.slider("Passages to retrieve (k)", 1, 10, 5)
     if st.button("🧹 Clear chat"):
         st.session_state.pop("messages", None)
         st.rerun()
@@ -45,7 +39,7 @@ with st.sidebar:
 
 # ---------- Session State ----------
 if "messages" not in st.session_state:
-    st.session_state.messages = []  # list of (role, content, passages)
+    st.session_state.messages = []  # (role, content, passages)
 
 def render_message(role: str, content: str):
     css = "user" if role == "user" else "bot"
@@ -56,32 +50,23 @@ for role, content, _passages in st.session_state.messages:
     render_message(role, content)
 
 # ---------- Input ----------
-user_msg = st.chat_input("Ask about arcs, characters, or lore… (you can also say hi)")
+user_msg = st.chat_input("Chat or ask anything about One Piece… (you can also say hi)")
 if user_msg:
-    # show user bubble
     st.session_state.messages.append(("user", user_msg, []))
     render_message("user", user_msg)
 
-    # answer (strict vs router)
     with st.spinner("Thinking…"):
-        if strict_mode:
-            # Grounded, extractive answers only
-            res = answer_question(user_msg, k=k_val)
-        else:
-            # Small talk + RAG + LLM fallback
-            res = chat_router(user_msg, k=k_val)
+        res = rag_chat(user_msg, k=k_val)
 
-    reply = res.get("reply", "Sorry, I don't know yet.")
+    reply = res.get("reply", "Sorry, I don't know.")
     passages = res.get("passages", [])
     st.session_state.messages.append(("bot", reply, passages))
     render_message("bot", reply)
 
-    # Sources expander
     if passages:
         with st.expander("Sources (passages)"):
-            for p in passages:
+            for i, p in enumerate(passages, 1):
                 title = p.get("title", "(untitled)")
                 arc = p.get("arc", "?")
                 score = p.get("score", 0.0)
-                st.markdown(f"- **{title}** ({arc}) — score: `{score:.3f}`")
-
+                st.markdown(f"- **[{i}] {title}** ({arc}) — score: `{score:.3f}`")
