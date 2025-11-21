@@ -7,33 +7,63 @@ import base64
 from pathlib import Path
 
 st.set_page_config(
-    page_title="One Piece Chatbot", 
-    page_icon="🏴‍☠️", 
+    page_title="One Piece Chatbot",
+    page_icon="🏴‍☠️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
+# ---------- Load Local Background Image ----------
+def get_base64_image(image_path: Path) -> str | None:
+    """Convert local image to base64 for CSS embedding."""
+    try:
+        with image_path.open("rb") as img_file:
+            return base64.b64encode(img_file.read()).decode()
+    except Exception as e:
+        st.error(f"Error loading background image: {e}")
+        return None
+
+bg_image_path = Path("data/bg_one_piece.jpg")
+bg_base64 = get_base64_image(bg_image_path) if bg_image_path.exists() else None
+if not bg_base64:
+    st.warning("Background image not found at data/bg_one_piece.jpg – using gradient instead.")
+
+# Decide background CSS depending on whether the image is available
+if bg_base64:
+    background_css = f"""
+        background-image:
+            linear-gradient(135deg, rgba(0,0,0,0.78), rgba(0,0,0,0.88)),
+            url("data:image/jpeg;base64,{bg_base64}");
+        background-size: cover;
+        background-position: center;
+        background-attachment: fixed;
+    """
+else:
+    background_css = """
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    """
+
 # ---------- Enhanced Styles with Background Image ----------
-st.markdown("""
+st.markdown(f"""
 <style>
     /* Import Google Fonts */
     @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
     
     /* Global Styles */
-    .stApp {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    .stApp {{
+        {background_css}
         font-family: 'Poppins', sans-serif;
-    }
+    }}
     
     /* Main container */
-    .main .block-container {
+    .main .block-container {{
         padding: 2rem 3rem;
         max-width: 1200px;
         margin: 0 auto;
-    }
+    }}
     
     /* Title styling */
-    h1 {
+    h1 {{
         color: white !important;
         text-align: center;
         font-weight: 700;
@@ -41,25 +71,25 @@ st.markdown("""
         margin-bottom: 0.5rem !important;
         text-shadow: 3px 3px 6px rgba(0,0,0,0.4);
         animation: titleFloat 3s ease-in-out infinite;
-    }
+    }}
     
-    @keyframes titleFloat {
-        0%, 100% { transform: translateY(0px); }
-        50% { transform: translateY(-5px); }
-    }
+    @keyframes titleFloat {{
+        0%, 100% {{ transform: translateY(0px); }}
+        50% {{ transform: translateY(-5px); }}
+    }}
     
     /* Subtitle */
-    .subtitle {
+    .subtitle {{
         text-align: center;
         color: rgba(255,255,255,0.95);
         font-size: 1.2rem;
         margin-bottom: 2rem;
         font-weight: 500;
         text-shadow: 1px 1px 3px rgba(0,0,0,0.3);
-    }
+    }}
     
-    /* Chat container with background */
-    .chat-container {
+    /* Chat container with background (for future use if needed) */
+    .chat-container {{
         background: white;
         border-radius: 20px;
         padding: 0;
@@ -70,68 +100,53 @@ st.markdown("""
         margin-bottom: 1.5rem;
         position: relative;
         border: 3px solid rgba(255,255,255,0.3);
-    }
-    
-    /* Background image overlay */
-    .chat-bg {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background-image: url('https://images.unsplash.com/photo-1589519160732-57fc498494f8?w=1200');
-        background-size: cover;
-        background-position: center;
-        opacity: 0.08;
-        pointer-events: none;
-        z-index: 0;
-    }
+    }}
     
     /* Scrollable messages area */
-    .messages-area {
+    .messages-area {{
         position: relative;
         z-index: 1;
         padding: 2rem;
         max-height: 600px;
         overflow-y: auto;
-    }
+    }}
     
-    html[data-theme="dark"] .chat-container {
+    html[data-theme="dark"] .chat-container {{
         background: #1a1d29;
         border-color: rgba(255,255,255,0.1);
-    }
+    }}
     
     /* Welcome message styling */
-    .welcome-box {
+    .welcome-box {{
         text-align: center;
         padding: 4rem 2rem;
         background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
         border-radius: 15px;
         margin: 2rem;
         border: 2px dashed rgba(102, 126, 234, 0.3);
-    }
+    }}
     
-    .welcome-box h3 {
+    .welcome-box h3 {{
         color: #667eea !important;
         margin-bottom: 1rem;
         font-size: 1.8rem;
-    }
+    }}
     
-    .welcome-box p {
+    .welcome-box p {{
         color: #718096;
         font-size: 1.1rem;
         margin: 0.5rem 0;
-    }
+    }}
     
-    .example-queries {
+    .example-queries {{
         display: flex;
         justify-content: center;
         gap: 1rem;
         margin-top: 1.5rem;
         flex-wrap: wrap;
-    }
+    }}
     
-    .example-query {
+    .example-query {{
         background: white;
         padding: 0.6rem 1.2rem;
         border-radius: 20px;
@@ -141,28 +156,28 @@ st.markdown("""
         cursor: pointer;
         transition: all 0.3s ease;
         box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
-    }
+    }}
     
-    .example-query:hover {
+    .example-query:hover {{
         background: #667eea;
         color: white;
         transform: translateY(-2px);
         box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-    }
+    }}
     
     /* Sidebar styling */
-    [data-testid="stSidebar"] {
+    [data-testid="stSidebar"] {{
         background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
-    }
+    }}
     
     [data-testid="stSidebar"] h2, 
     [data-testid="stSidebar"] p,
-    [data-testid="stSidebar"] label {
+    [data-testid="stSidebar"] label {{
         color: white !important;
-    }
+    }}
     
     /* Button styling */
-    .stButton button {
+    .stButton button {{
         width: 100%;
         background: white !important;
         color: #667eea !important;
@@ -172,74 +187,74 @@ st.markdown("""
         font-weight: 600 !important;
         transition: all 0.3s ease;
         font-size: 1rem;
-    }
+    }}
     
-    .stButton button:hover {
+    .stButton button:hover {{
         background: rgba(255,255,255,0.95) !important;
         transform: translateY(-3px);
         box-shadow: 0 6px 16px rgba(0,0,0,0.2);
-    }
+    }}
     
-    .stButton button p {
+    .stButton button p {{
         color: #667eea !important;
         font-weight: 600;
-    }
+    }}
     
     /* Expander styling */
-    .streamlit-expanderHeader {
+    .streamlit-expanderHeader {{
         background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
         border-radius: 12px;
         font-weight: 600;
         border: 1px solid rgba(102, 126, 234, 0.2);
         padding: 1rem;
-    }
+    }}
     
-    html[data-theme="dark"] .streamlit-expanderHeader {
+    html[data-theme="dark"] .streamlit-expanderHeader {{
         background: #2d3748;
-    }
+    }}
     
     /* Chat message containers */
-    .stChatMessage {
+    .stChatMessage {{
         padding: 1rem;
         margin: 0.8rem 0;
         border-radius: 15px;
         animation: messageSlide 0.4s ease-out;
-    }
+    }}
     
-    @keyframes messageSlide {
-        from {
+    @keyframes messageSlide {{
+        from {{
             opacity: 0;
             transform: translateX(-20px);
-        }
-        to {
+        }}
+        to {{
             opacity: 1;
             transform: translateX(0);
-        }
-    }
+        }}
+    }}
     
-    [data-testid="stChatMessageContent"] {
+    [data-testid="stChatMessageContent"] {{
         background: transparent;
-    }
+    }}
     
     /* User message styling */
-    [data-testid="stChatMessage"][data-testid*="user"] {
+    [data-testid="stChatMessage"][data-testid*="user"] {{
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
-    }
+    }}
     
     /* Bot message styling */
-    [data-testid="stChatMessage"]:not([data-testid*="user"]) {
+    [data-testid="stChatMessage"]:not([data-testid*="user"]) {{
         background: rgba(241, 243, 245, 0.95);
         border: 1px solid rgba(102, 126, 234, 0.2);
-    }
+    }}
     
-    html[data-theme="dark"] [data-testid="stChatMessage"]:not([data-testid*="user"]) {
+    html[data-theme="dark"] [data-testid="stChatMessage"]:not([data-testid*="user"]) {{
         background: rgba(45, 55, 72, 0.95);
         border-color: #4a5568;
-    }
+    }}
     
     /* Sources badge */
-    .sources-badge {
+    .sources-badge {{
         display: inline-block;
         background: rgba(102, 126, 234, 0.2);
         color: #667eea;
@@ -249,45 +264,45 @@ st.markdown("""
         font-weight: 600;
         margin-top: 0.8rem;
         border: 1px solid rgba(102, 126, 234, 0.3);
-    }
+    }}
     
-    html[data-theme="dark"] .sources-badge {
+    html[data-theme="dark"] .sources-badge {{
         background: rgba(102, 126, 234, 0.3);
         color: #a5b4fc;
-    }
+    }}
     
     /* Chat input styling */
-    .stChatInput {
+    .stChatInput {{
         border-radius: 15px;
         border: 2px solid rgba(255,255,255,0.3);
         box-shadow: 0 5px 20px rgba(0,0,0,0.2);
-    }
+    }}
     
-    .stChatInput > div {
+    .stChatInput > div {{
         border-radius: 15px;
-    }
+    }}
     
     /* Scrollbar */
-    .messages-area::-webkit-scrollbar {
+    .messages-area::-webkit-scrollbar {{
         width: 10px;
-    }
+    }}
     
-    .messages-area::-webkit-scrollbar-track {
+    .messages-area::-webkit-scrollbar-track {{
         background: rgba(241, 243, 245, 0.5);
         border-radius: 10px;
-    }
+    }}
     
-    .messages-area::-webkit-scrollbar-thumb {
+    .messages-area::-webkit-scrollbar-thumb {{
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         border-radius: 10px;
-    }
+    }}
     
-    .messages-area::-webkit-scrollbar-thumb:hover {
+    .messages-area::-webkit-scrollbar-thumb:hover {{
         background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
-    }
+    }}
     
     /* Info cards in sidebar */
-    .info-card {
+    .info-card {{
         background: rgba(255,255,255,0.2);
         padding: 1.2rem;
         border-radius: 15px;
@@ -295,26 +310,26 @@ st.markdown("""
         backdrop-filter: blur(10px);
         border: 1px solid rgba(255,255,255,0.3);
         box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    }
+    }}
     
-    .info-card h3 {
+    .info-card h3 {{
         margin-top: 0;
         color: white !important;
         font-size: 1.2rem;
-    }
+    }}
     
     /* Slider styling */
-    .stSlider {
+    .stSlider {{
         padding: 0.5rem 0;
-    }
+    }}
     
     /* Loading spinner */
-    .stSpinner > div {
+    .stSpinner > div {{
         border-color: #667eea !important;
-    }
+    }}
     
     /* Stats badge */
-    .stat-badge {
+    .stat-badge {{
         background: rgba(255,255,255,0.25);
         padding: 0.5rem 1rem;
         border-radius: 10px;
@@ -323,7 +338,7 @@ st.markdown("""
         align-items: center;
         gap: 0.5rem;
         font-size: 0.95rem;
-    }
+    }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -369,10 +384,10 @@ with st.sidebar:
     st.markdown('<div class="info-card">', unsafe_allow_html=True)
     st.markdown("### 💡 Quick Tips")
     st.markdown("""
-    - Ask about **characters** 🏴‍☠️
-    - Explore **story arcs** 📖
-    - Discover **abilities** ⚡
-    - Learn about **locations** 🗺️
+    - Ask about **characters** 🏴‍☠️  
+    - Explore **story arcs** 📖  
+    - Discover **abilities** ⚡  
+    - Learn about **locations** 🗺️  
     """)
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -381,7 +396,6 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 # ---------- Chat Display ----------
-# Using Streamlit's native chat display with custom container
 chat_container = st.container()
 
 with chat_container:
@@ -407,7 +421,10 @@ with chat_container:
                 st.markdown(content)
                 if role == "assistant" and passages:
                     passage_count = len(passages)
-                    st.markdown(f'<span class="sources-badge">📚 {passage_count} source{"s" if passage_count != 1 else ""}</span>', unsafe_allow_html=True)
+                    st.markdown(
+                        f'<span class="sources-badge">📚 {passage_count} source{"s" if passage_count != 1 else ""}</span>',
+                        unsafe_allow_html=True,
+                    )
 
 # ---------- Chat Input ----------
 user_msg = st.chat_input("💬 Type your message here...")
@@ -432,7 +449,10 @@ if user_msg:
         
         if passages:
             passage_count = len(passages)
-            st.markdown(f'<span class="sources-badge">📚 {passage_count} source{"s" if passage_count != 1 else ""}</span>', unsafe_allow_html=True)
+            st.markdown(
+                f'<span class="sources-badge">📚 {passage_count} source{"s" if passage_count != 1 else ""}</span>',
+                unsafe_allow_html=True,
+            )
         
         # Add bot message to history
         st.session_state.messages.append(("assistant", reply, passages))
