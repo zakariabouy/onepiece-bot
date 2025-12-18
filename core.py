@@ -55,18 +55,22 @@ def load_notes_and_build_index():
     """Load notes from SQLite and build an embedding matrix."""
     global _notes, _emb_model, _emb_matrix
 
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS notes (
-            id   TEXT PRIMARY KEY,
-            title TEXT,
-            arc   TEXT,
-            text  TEXT
-        )
-    """)
-    rows = c.execute("SELECT id, title, arc, text FROM notes").fetchall()
-    conn.close()
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS notes (
+                id   TEXT PRIMARY KEY,
+                title TEXT,
+                arc   TEXT,
+                text  TEXT
+            )
+        """)
+        rows = c.execute("SELECT id, title, arc, text FROM notes").fetchall()
+        conn.close()
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        rows = []
 
     notes = [{"id": r[0], "title": r[1], "arc": r[2], "text": r[3]} for r in rows]
     docs = [f"{n['title']} — {n['text']}" for n in notes]

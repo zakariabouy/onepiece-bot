@@ -27,7 +27,7 @@ def get_base64_image(image_path: Path) -> str | None:
 bg_image_path = Path("data/bg.jpeg")
 bg_base64 = get_base64_image(bg_image_path) if bg_image_path.exists() else None
 if not bg_base64:
-    st.warning("Background image not found at data/bg_one_piece.jpg – using gradient instead.")
+    st.warning("Background image not found at data/bg.jpeg – using gradient instead.")
 
 # Decide background CSS depending on whether the image is available
 if bg_base64:

@@ -3,7 +3,10 @@ import json
 from pathlib import Path
 
 DB_PATH = "onepiece.db"
-NOTES_PATH = Path("data/wiki_notes.jsonl")
+# Use cleaned wiki notes if available, fallback to original
+NOTES_PATH = Path("data/wiki_notes_clean.jsonl")
+if not NOTES_PATH.exists():
+    NOTES_PATH = Path("data/wiki_notes.jsonl")
 
 
 def build_text_from_obj(obj: dict) -> str:
