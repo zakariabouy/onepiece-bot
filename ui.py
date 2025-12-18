@@ -481,10 +481,15 @@ if user_msg:
     with st.chat_message("user", avatar="👤"):
         st.markdown(user_msg)
 
-    # Get bot response
+    # Build conversation history for context
+    history = []
+    for role, content, _ in st.session_state.messages[:-1]:  # Exclude the just-added user message
+        history.append({"role": role, "content": content})
+    
+    # Get bot response with conversation memory
     with st.chat_message("assistant", avatar="🏴‍☠️"):
         with st.spinner("🤔 Thinking..."):
-            res = rag_chat(user_msg, k=k_val, temperature=temp_val)
+            res = rag_chat(user_msg, k=k_val, temperature=temp_val, history=history)
 
         reply = res.get("reply", "Sorry, I don't know.")
         passages = res.get("passages", [])
