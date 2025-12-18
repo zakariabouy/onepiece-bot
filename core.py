@@ -92,10 +92,36 @@ def _maybe_reload():
         load_notes_and_build_index()
         _last_reload = now
 
+def _is_latest_query(query: str) -> bool:
+    """Detect if user is asking about recent/latest events."""
+    patterns = ['latest', 'recent', 'newest', 'last chapter', 'last event', 
+                'current', 'now', 'happening now', 'most recent', 'currently']
+    q_lower = query.lower()
+    return any(p in q_lower for p in patterns)
+
+def _get_latest_chapters(k: int = 5) -> List[Dict]:
+    """Get the most recent chapters by chapter number."""
+    _maybe_reload()
+    chapter_notes = [n for n in _notes if n.get('id', '').startswith('chapter_')]
+    # Sort by chapter number descending
+    chapter_notes.sort(key=lambda x: int(x['id'].replace('chapter_', '') or 0), reverse=True)
+    # Add score field to match semantic search results format
+    results = []
+    for note in chapter_notes[:k]:
+        item = dict(note)
+        item["score"] = 1.0  # High score for chronological matches
+        results.append(item)
+    return results
+
 def search_topk(query: str, k: int = 5) -> List[Dict]:
     _maybe_reload()
     if not _notes or _emb_matrix is None:
         return []
+    
+    # Special handling for "latest/recent" queries
+    if _is_latest_query(query):
+        return _get_latest_chapters(k)
+    
     q_vec = np.array(list(_emb_model.embed([query]))[0], dtype="float32").reshape(1, -1)
     sims = cosine_similarity(q_vec, _emb_matrix).ravel()
     top_idx = sims.argsort()[::-1][:k]
@@ -121,7 +147,7 @@ def filter_hits_by_relevance(question: str, hits: List[Dict]) -> List[Dict]:
     return filtered
 
 # ====== Local LLM (Ollama) ======
-def llm_chat(messages, temperature: float = 0.5, timeout: float = 90.0) -> str:
+def llm_chat(messages, temperature: float = 0.5, timeout: float = 60.0) -> str:
     """
     messages: [{"role":"system"|"user"|"assistant","content":"..."}]
     Streams from Ollama /api/chat and returns assistant text.
@@ -130,7 +156,15 @@ def llm_chat(messages, temperature: float = 0.5, timeout: float = 90.0) -> str:
         with httpx.stream(
             "POST",
             OLLAMA_URL,
-            json={"model": OLLAMA_MODEL, "messages": messages, "stream": True, "options": {"temperature": temperature}},
+            json={
+                "model": OLLAMA_MODEL, 
+                "messages": messages, 
+                "stream": True, 
+                "options": {
+                    "temperature": temperature,
+                    "num_ctx": 4096,  # Limit context window for faster responses
+                }
+            },
             timeout=timeout,
         ) as r:
             r.raise_for_status()
@@ -201,13 +235,16 @@ def answer_question(question: str, k: int = 3) -> Dict:
     return {"reply": reply, "passages": [top]}
 
 # ====== Conversational RAG (single mode for everything) ======
-def _build_context(hits: List[Dict]) -> str:
-    """Compact, numbered context block for the LLM."""
+def _build_context(hits: List[Dict], max_chars_per_hit: int = 800) -> str:
+    """Compact, numbered context block for the LLM. Truncates long texts."""
     lines = []
     for i, h in enumerate(hits, 1):
         title = h.get("title", "(untitled)")
         arc = h.get("arc", "?")
         text = (h.get("text") or "").strip()
+        # Truncate long texts to prevent slow LLM responses
+        if len(text) > max_chars_per_hit:
+            text = text[:max_chars_per_hit] + "..."
         lines.append(f"[{i}] {title} ({arc}) — {text}")
     return "\n".join(lines)
 
@@ -240,22 +277,20 @@ def rag_chat(user_text: str, k: int = 5, temperature: float = 0.5) -> Dict:
     # 3) Build grounded context and ask LLM to synthesize (multi-passage)
     context = _build_context(hits)
     system_prompt = (
-        "You are a One Piece assistant. Answer using ONLY the facts found in the Sources below.\n"
-        "Combine information across multiple sources when helpful.\n"
-        "If the answer is not present in the Sources, say: \"I don't know based on my notes.\" Do not invent details.\n"
-        "After your answer, include a line like: Sources: [1], [3]. Keep answers concise and friendly."
+        "You are a passionate One Piece expert and fan who has read every chapter and knows the story deeply. "
+        "Answer questions naturally as if you're chatting with a fellow fan. "
+        "Use the reference material below to ensure accuracy, but DO NOT mention 'sources', 'provided text', or 'based on the text'. "
+        "Speak confidently about One Piece lore, characters, and events. "
+        "If something isn't covered in the references, say you're not sure about that specific detail. "
+        "Keep answers engaging and conversational. Use character names and story context naturally.\n\n"
+        "Reference material (use for accuracy but don't mention directly):\n"
     )
-    user_prompt = f"Question: {user_text}\n\nSources:\n{context}\n\nWrite the best answer with citations."
+    user_prompt = f"{context}\n\n---\nFan question: {user_text}\n\nAnswer as a One Piece expert:"
 
     msgs = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt},
     ]
     reply = llm_chat(msgs, temperature=temperature)
-
-    # 4) If the LLM forgot citations, add first few as a safe default
-    if "Sources:" not in reply:
-        nums = ", ".join([f"[{i}]" for i in range(1, min(len(hits), 3) + 1)])
-        reply = f"{reply}\n\nSources: {nums}"
 
     return {"reply": reply, "passages": hits}
