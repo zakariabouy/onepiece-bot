@@ -2,7 +2,7 @@
 
 An AI-powered chatbot that answers questions about One Piece using **Retrieval-Augmented Generation (RAG)**.
 
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://share.streamlit.io)
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://onepiece-bot.streamlit.app)
 
 ## ✨ Features
 
@@ -23,7 +23,7 @@ An AI-powered chatbot that answers questions about One Piece using **Retrieval-A
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_USERNAME/onepiece-bot.git
+git clone https://github.com/zakariabouy/onepiece-bot.git
 cd onepiece-bot
 
 # Create virtual environment
@@ -44,24 +44,46 @@ streamlit run ui.py
 ## 🏗️ Architecture
 
 ```
-User Query → Streamlit UI → FastEmbed → SQLite DB
-                ↓
-            Groq LLM → Response with Sources
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   User      │────▶│  Streamlit  │────▶│   Groq      │
+│   Query     │     │   UI        │     │   LLM       │
+└─────────────┘     └──────┬──────┘     └─────────────┘
+                          │
+                    ┌─────▼─────┐
+                    │ FastEmbed │
+                    │ Embeddings│
+                    └─────┬─────┘
+                          │
+                    ┌─────▼─────┐
+                    │  SQLite   │
+                    │  Database │
+                    └───────────┘
 ```
 
 ## 📁 Project Structure
 
 ```
 onepiece-bot/
-├── ui.py              # Streamlit chat interface
-├── core.py            # RAG logic & Groq LLM integration
-├── requirements.txt   # Python dependencies
-├── onepiece.db        # SQLite database with One Piece data
-├── embeddings_cache.npz  # Pre-computed embeddings
-├── data/
-│   ├── chapters.csv   # Chapter summaries
-│   └── characters/    # Character portrait images
-└── scripts/           # Data import utilities
+├── ui.py                    # 🎯 Main Streamlit app
+├── src/                     # 📦 Source code
+│   ├── __init__.py
+│   └── core.py              # RAG logic & Groq LLM
+├── data/                    # 📊 Data files
+│   ├── db/
+│   │   └── onepiece.db      # SQLite database
+│   ├── cache/
+│   │   └── embeddings_cache.npz
+│   ├── assets/
+│   │   ├── bg.jpeg          # Background image
+│   │   ├── chapters.csv     # Chapter data
+│   │   └── notes.jsonl      # Character notes
+│   └── characters/          # Character images (56+)
+├── scripts/                 # 🔧 Data utilities
+├── tests/                   # 🧪 Unit tests
+├── notebooks/               # 📓 Jupyter notebooks
+├── .streamlit/              # Streamlit config
+├── requirements.txt
+└── .env                     # API keys (not in git)
 ```
 
 ## 🔧 Environment Variables
@@ -74,8 +96,9 @@ onepiece-bot/
 ## 📊 Data Sources
 
 - 1,158 Chapter summaries (up to Chapter 1130+)
-- 25+ Character profiles
+- 25+ Character profiles with images
 - 20+ Devil Fruit details
+- 56+ Character portrait images
 
 ## 🚀 Deploy to Streamlit Cloud
 
