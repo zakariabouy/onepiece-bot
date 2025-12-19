@@ -1,12 +1,18 @@
 import sys
+import os
 import cv2
 import pytesseract
 import argparse
 
 # configurations
 config = ('-l eng --oem 1 --psm 3')
-# set path to tesseract
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+# set path to tesseract (use environment variable or default paths)
+TESSERACT_CMD = os.getenv("TESSERACT_CMD")
+if TESSERACT_CMD:
+    pytesseract.pytesseract.tesseract_cmd = TESSERACT_CMD
+elif sys.platform == "win32":
+    pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+# On Linux/macOS, pytesseract will use the system PATH by default
 
 def return_txt(filename):
 	return filename.replace('.jpg', '.txt').replace('.jpeg', '.txt').replace('.png', '.txt')

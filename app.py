@@ -1,10 +1,20 @@
 # app.py — FastAPI that wraps the shared core logic
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import List, Dict
 from core import answer_question, load_notes_and_build_index
 
-app = FastAPI(title="One Piece Bot API")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: load notes and build index
+    load_notes_and_build_index()
+    yield
+    # Shutdown: cleanup if needed
+
+
+app = FastAPI(title="One Piece Bot API", lifespan=lifespan)
 
 class ChatRequest(BaseModel):
     message: str
@@ -13,10 +23,6 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     reply: str
     passages: List[Dict]
-
-@app.on_event("startup")
-def _startup():
-    load_notes_and_build_index()
 
 @app.get("/")
 def read_root():
