@@ -3,7 +3,12 @@
 import streamlit as st
 import os
 import re
+import sys
+
+# Add src to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 from core import rag_chat, load_notes_and_build_index
+
 import base64
 from pathlib import Path
 
@@ -115,10 +120,10 @@ def get_base64_image(image_path: Path) -> str | None:
         return None
 
 
-bg_image_path = Path("data/bg.jpeg")
+bg_image_path = Path("data/assets/bg.jpeg")
 bg_base64 = get_base64_image(bg_image_path) if bg_image_path.exists() else None
 if not bg_base64:
-    st.warning("Background image not found at data/bg.jpeg – using gradient instead.")
+    st.warning("Background image not found at data/assets/bg.jpeg – using gradient instead.")
 
 # Decide background CSS depending on whether the image is available
 if bg_base64:

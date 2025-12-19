@@ -28,8 +28,8 @@ def _get_api_key():
 from groq import Groq
 
 # ====== Config ======
-DB_PATH = os.getenv("ONEPIECE_DB", "onepiece.db")
-EMB_CACHE_PATH = os.getenv("EMB_CACHE", "embeddings_cache.npz")  # Disk cache!
+DB_PATH = os.getenv("ONEPIECE_DB", "data/db/onepiece.db")
+EMB_CACHE_PATH = os.getenv("EMB_CACHE", "data/cache/embeddings_cache.npz")  # Disk cache!
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")  # Fast model
 RELOAD_INTERVAL_SEC = 3600  # Only reload every hour (embeddings cached)
 
