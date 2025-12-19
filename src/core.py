@@ -144,7 +144,7 @@ def load_notes_and_build_index():
     notes = [{"id": r[0], "title": r[1], "arc": r[2], "text": r[3]} for r in rows]
     
     # Truncate text to avoid memory issues during embedding
-    MAX_TEXT_LEN = 500  # Characters per document for embedding
+    MAX_TEXT_LEN = 1000  # Characters per document for embedding
     docs = []
     for n in notes:
         text = (n['text'] or "")[:MAX_TEXT_LEN]
