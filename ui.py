@@ -1,7 +1,8 @@
 # ui.py — Enhanced Streamlit chat UI for One Piece Bot with Background Image
 
 import streamlit as st
-import torch
+import os
+import re
 from core import rag_chat, load_notes_and_build_index
 import base64
 from pathlib import Path
@@ -12,6 +13,96 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+# ---------- Character Image Helper ----------
+CHARACTER_IMAGE_DIR = Path("data/characters")
+
+def get_safe_filename(name: str) -> str:
+    """Convert character name to safe filename."""
+    return re.sub(r'[^\w\-]', '_', name.lower()).strip('_') + ".jpg"
+
+def find_character_image(question: str, answer: str) -> tuple[str, Path] | None:
+    """
+    Only show character image if the QUESTION is specifically asking about that character.
+    This prevents showing random images when a character is just mentioned in passing.
+    """
+    # Only check the question, not the answer - to avoid false matches
+    question_lower = question.lower().strip()
+    
+    # Patterns that indicate asking about a specific character
+    # e.g., "who is luffy", "tell me about zoro", "what is nami's backstory"
+    asking_patterns = [
+        r"who\s+is\s+",
+        r"tell\s+me\s+about\s+",
+        r"what\s+(is|are|about|does|did|can|was|were)\s+.{0,20}('s|s')?\s*",
+        r"describe\s+",
+        r"explain\s+",
+        r"^(luffy|zoro|nami|sanji|robin|chopper|franky|brook|jinbe|usopp)",  # Starts with name
+    ]
+    
+    is_asking_about_character = any(re.search(p, question_lower) for p in asking_patterns)
+    
+    if not is_asking_about_character:
+        return None
+    
+    # Character mappings: (regex pattern for question, display name, filename)
+    # Only match if character name appears near the asking pattern
+    characters = [
+        # Straw Hats (most common)
+        (r'\bluffy\b', "Monkey D. Luffy", "monkey_d__luffy"),
+        (r'\bzoro\b', "Roronoa Zoro", "roronoa_zoro"),
+        (r'\bnami\b', "Nami", "nami"),
+        (r'\busopp\b', "Usopp", "usopp"),
+        (r'\bsanji\b', "Sanji", "sanji"),
+        (r'\bchopper\b', "Tony Tony Chopper", "tony_tony_chopper"),
+        (r'\brobin\b', "Nico Robin", "nico_robin"),
+        (r'\bfranky\b', "Franky", "franky"),
+        (r'\bbrook\b', "Brook", "brook"),
+        (r'\bjinbe\b', "Jinbe", "jinbe"),
+        
+        # Major characters
+        (r'\bshanks\b', "Shanks", "shanks"),
+        (r'\bace\b', "Portgas D. Ace", "portgas_d__ace"),
+        (r'\bsabo\b', "Sabo", "sabo"),
+        (r'\blaw\b', "Trafalgar Law", "trafalgar_law"),
+        (r'\bkaido\b', "Kaido", "kaido"),
+        (r'\bbig\s*mom\b', "Big Mom", "big_mom"),
+        (r'\bblackbeard\b', "Blackbeard", "blackbeard"),
+        (r'\bwhitebeard\b', "Whitebeard", "whitebeard"),
+        (r'\bdoflamingo\b', "Doflamingo", "donquixote_doflamingo"),
+        (r'\bmihawk\b', "Dracule Mihawk", "dracule_mihawk"),
+        (r'\bhancock\b', "Boa Hancock", "boa_hancock"),
+        (r'\bkatakuri\b', "Katakuri", "katakuri"),
+        (r'\bmarco\b', "Marco", "marco"),
+        (r'\bgarp\b', "Monkey D. Garp", "monkey_d__garp"),
+        (r'\brayleigh\b', "Silvers Rayleigh", "silvers_rayleigh"),
+        (r'\broger\b', "Gol D. Roger", "gol_d__roger"),
+        (r'\benel\b', "Enel", "enel"),
+        (r'\bcrocodile\b', "Crocodile", "crocodile"),
+        (r'\bbuggy\b', "Buggy", "buggy"),
+        (r'\byamato\b', "Yamato", "yamato"),
+        (r'\bvivi\b', "Nefertari Vivi", "nefertari_vivi"),
+        (r'\bsmoker\b', "Smoker", "smoker"),
+        (r'\bkoby\b', "Koby", "koby"),
+        (r'\bcarrot\b', "Carrot", "carrot"),
+        (r'\bbonney\b', "Jewelry Bonney", "jewelry_bonney"),
+        (r'\bkid\b', "Eustass Kid", "eustass_kid"),
+        (r'\baokiji\b', "Aokiji", "aokiji"),
+        (r'\bkizaru\b', "Kizaru", "kizaru"),
+        (r'\bfujitora\b', "Fujitora", "fujitora"),
+        (r'\bmagellan\b', "Magellan", "magellan"),
+        (r'\bivankov\b', "Ivankov", "emporio_ivankov"),
+        (r'\balvida\b', "Alvida", "alvida"),
+        (r'\barlong\b', "Arlong", "arlong"),
+    ]
+    
+    for pattern, display_name, filename_base in characters:
+        if re.search(pattern, question_lower):
+            img_path = CHARACTER_IMAGE_DIR / f"{filename_base}.jpg"
+            if img_path.exists():
+                return (display_name, img_path)
+    
+    return None
 
 # ---------- Load Local Background Image ----------
 def get_base64_image(image_path: Path) -> str | None:
@@ -405,10 +496,8 @@ with st.sidebar:
     # Info section
     st.markdown('<div class="info-card">', unsafe_allow_html=True)
     st.markdown("### 📌 System Info")
-    device_emoji = "🚀" if torch.cuda.is_available() else "💻"
-    device_name = "GPU (CUDA)" if torch.cuda.is_available() else "CPU"
     st.markdown(
-        f'<div class="stat-badge">{device_emoji} <strong>Device:</strong> {device_name}</div>',
+        '<div class="stat-badge">☁️ <strong>LLM:</strong> Groq Cloud</div>',
         unsafe_allow_html=True,
     )
     st.markdown(
@@ -494,7 +583,17 @@ if user_msg:
         reply = res.get("reply", "Sorry, I don't know.")
         passages = res.get("passages", [])
 
-        st.markdown(reply)
+        # Only show character image if question is ABOUT that character
+        char_info = find_character_image(user_msg, reply)
+        if char_info:
+            char_name, img_path = char_info
+            col1, col2 = st.columns([1, 3])
+            with col1:
+                st.image(str(img_path), caption=char_name, width=150)
+            with col2:
+                st.markdown(reply)
+        else:
+            st.markdown(reply)
 
         if passages:
             passage_count = len(passages)

@@ -12,5 +12,8 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
-.onepiece.db
-onepiece.db
+# Secrets (NEVER commit this!)
+.env
+
+# Streamlit secrets
+.streamlit/secrets.toml

@@ -2,23 +2,27 @@
 # - Retrieval: FastEmbed (BAAI/bge-small-en-v1.5)
 # - Synthesis: Groq cloud LLM (fast & free)
 # - Fallbacks for small talk / weak retrieval
-# - Optional strict extractive QA helper (answer_question)
 
 from typing import List, Dict
 import os, re, time, threading, sqlite3, json
 import numpy as np
 from dotenv import load_dotenv
 
-# Load .env file (for GROQ_API_KEY)
+# Load .env file (for local development)
 load_dotenv()
 
-# ---------- Retrieval: semantic embeddings ----------
-from fastembed import TextEmbedding
-from sklearn.metrics.pairwise import cosine_similarity
-
-# ---------- Optional extractive QA (GPU if available) ----------
-import torch
-from transformers import pipeline
+# ---------- Get API key from Streamlit secrets OR .env ----------
+def _get_api_key():
+    """Get Groq API key from Streamlit secrets (cloud) or .env (local)."""
+    # Try Streamlit secrets first (for Streamlit Cloud deployment)
+    try:
+        import streamlit as st
+        if hasattr(st, 'secrets') and 'GROQ_API_KEY' in st.secrets:
+            return st.secrets['GROQ_API_KEY']
+    except:
+        pass
+    # Fall back to environment variable
+    return os.getenv("GROQ_API_KEY", "")
 
 # ---------- Cloud LLM (Groq - fast & free) ----------
 from groq import Groq
@@ -26,7 +30,6 @@ from groq import Groq
 # ====== Config ======
 DB_PATH = os.getenv("ONEPIECE_DB", "onepiece.db")
 EMB_CACHE_PATH = os.getenv("EMB_CACHE", "embeddings_cache.npz")  # Disk cache!
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")  # Set this!
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")  # Fast model
 RELOAD_INTERVAL_SEC = 3600  # Only reload every hour (embeddings cached)
 
@@ -36,41 +39,37 @@ _groq_client = None
 def _get_groq_client():
     global _groq_client
     if _groq_client is None:
-        if not GROQ_API_KEY:
+        api_key = _get_api_key()
+        if not api_key:
             raise ValueError("GROQ_API_KEY not set! Get free key at: https://console.groq.com/keys")
-        _groq_client = Groq(api_key=GROQ_API_KEY)
+        _groq_client = Groq(api_key=api_key)
     return _groq_client
 
-# Detect device for HF pipelines
-DEVICE = 0 if torch.cuda.is_available() else -1
-print("CUDA available:", torch.cuda.is_available())
-if torch.cuda.is_available():
-    try:
-        print("CUDA device:", torch.cuda.get_device_name(0))
-    except Exception:
-        pass
-    torch.set_float32_matmul_precision("high")
+# LAZY LOAD heavy libraries
+_TextEmbedding = None
+_cosine_similarity = None
 
-# (Optional) Extractive QA - LAZY LOADED to speed up startup
-_qa_pipeline = None
+def _get_embedding_model():
+    """Lazy load embedding model."""
+    global _TextEmbedding, _emb_model
+    if _TextEmbedding is None:
+        print("Loading embedding model...")
+        from fastembed import TextEmbedding as TE
+        _TextEmbedding = TE
+    if _emb_model is None:
+        _emb_model = _TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
+    return _emb_model
 
-def get_qa_pipeline():
-    """Lazy load QA pipeline only when needed."""
-    global _qa_pipeline
-    if _qa_pipeline is None:
-        print("Loading QA model (one-time)...")
-        _qa_pipeline = pipeline(
-            "question-answering",
-            model="deepset/roberta-base-squad2",
-            device=DEVICE,
-            torch_dtype=torch.float16 if DEVICE == 0 else None,
-            framework="pt",
-        )
-    return _qa_pipeline
+def _get_cosine_similarity():
+    global _cosine_similarity
+    if _cosine_similarity is None:
+        from sklearn.metrics.pairwise import cosine_similarity
+        _cosine_similarity = cosine_similarity
+    return _cosine_similarity
 
 # ====== Globals for notes + index ======
 _notes: List[Dict] = []
-_emb_model: TextEmbedding | None = None
+_emb_model = None
 _emb_matrix: np.ndarray | None = None
 _lock = threading.Lock()
 _last_reload = 0.0
@@ -152,7 +151,7 @@ def load_notes_and_build_index():
         docs.append(f"{n['title']} — {text}")
 
     if _emb_model is None:
-        _emb_model = TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
+        _emb_model = _get_embedding_model()
 
     print(f"Embedding {len(docs)} documents in small batches...")
     
@@ -218,10 +217,10 @@ def search_topk(query: str, k: int = 5) -> List[Dict]:
     
     # Ensure embedding model is loaded (needed for query embedding)
     if _emb_model is None:
-        _emb_model = TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
+        _emb_model = _get_embedding_model()
     
     q_vec = np.array(list(_emb_model.embed([query]))[0], dtype="float32").reshape(1, -1)
-    sims = cosine_similarity(q_vec, _emb_matrix).ravel()
+    sims = _get_cosine_similarity()(q_vec, _emb_matrix).ravel()
     top_idx = sims.argsort()[::-1][:k]
     results = []
     for idx in top_idx:
@@ -270,43 +269,17 @@ def is_small_talk(q: str) -> bool:
     ql = q.strip().lower()
     return bool(GREET_RE.search(ql) or THANKS_RE.search(ql) or ql in {"how are you?", "who are you?", "what can you do?"})
 
-# ====== Strict extractive QA (helper) ======
+# ====== Simple QA (uses Groq instead of heavy local model) ======
 def answer_question(question: str, k: int = 3) -> Dict:
     """
-    Retrieval -> filter -> extractive QA per passage.
-    Accept an answer only if:
-      - confidence >= threshold, and
-      - exact span appears in the passage (prevents hallucination)
-    Else, fall back to top passage text (still grounded).
+    Simple retrieval + LLM answer.
     """
     raw_hits = search_topk(question, k=k)
     hits = filter_hits_by_relevance(question, raw_hits)
     if not hits:
         return {"reply": "Sorry, I don't know yet.", "passages": []}
 
-    best = None  # (answer, score, idx)
-    for i, h in enumerate(hits):
-        ctx = h.get("text", "")
-        if not ctx:
-            continue
-        try:
-            res = get_qa_pipeline()(question=question, context=ctx)
-            ans = (res.get("answer") or "").strip()
-            sc = float(res.get("score") or 0.0)
-            if ans and len(ans) > 3 and ans.lower() not in {"yes", "no", "unknown"} and ans in ctx:
-                if (best is None) or (sc > best[1]):
-                    best = (ans, sc, i)
-        except Exception:
-            continue
-
-    CONF_THRESH = 0.55
-    if best and best[1] >= CONF_THRESH:
-        i = best[2]
-        src = f"{hits[i]['title']} ({hits[i]['arc']})"
-        reply = f"Q: {question}\n\nA: {best[0]}\n\nSources: {src}"
-        return {"reply": reply, "passages": [hits[i]]}
-
-    # Fallback: grounded verbatim (top passage)
+    # Use top passage
     top = hits[0]
     reply = f"Q: {question}\n\nA: {top['text']}\n\nSources: {top['title']} ({top['arc']})"
     return {"reply": reply, "passages": [top]}
