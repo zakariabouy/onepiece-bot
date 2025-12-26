@@ -464,22 +464,27 @@ st.markdown(
 
 # ---------- Sidebar ----------
 with st.sidebar:
-    st.markdown("## ⚙️ Controls")
-
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("🔄 Rebuild Index"):
-            with st.spinner("Rebuilding..."):
-                load_notes_and_build_index()
-            st.success("✓ Index rebuilt!")
-
-    with col2:
-        if st.button("🧹 Clear Chat"):
-            st.session_state.pop("messages", None)
-            st.rerun()
-
+    # Header with logo
+    st.markdown("""
+    <div style="text-align: center; padding: 1rem 0;">
+        <h1 style="margin: 0; font-size: 2.5rem;">🏴‍☠️</h1>
+        <h2 style="margin: 0.5rem 0; color: #E63946;">One Piece Bot</h2>
+        <p style="color: #888; font-size: 0.85rem;">Your AI Nakama</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
     st.markdown("---")
 
+    # Clear chat button - full width, styled
+    if st.button("🧹 Clear Chat", use_container_width=True, type="secondary"):
+        st.session_state.pop("messages", None)
+        st.rerun()
+
+    st.markdown("---")
+    
+    # Settings section
+    st.markdown("### ⚙️ Settings")
+    
     k_val = st.slider(
         "📊 Passages to retrieve",
         1,
@@ -498,33 +503,31 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # Info section
-    st.markdown('<div class="info-card">', unsafe_allow_html=True)
-    st.markdown("### 📌 System Info")
-    st.markdown(
-        '<div class="stat-badge">☁️ <strong>LLM:</strong> Groq Cloud</div>',
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        '<div class="stat-badge">🗄️ <strong>Database:</strong> onepiece.db</div>',
-        unsafe_allow_html=True,
-    )
-    st.markdown("</div>", unsafe_allow_html=True)
-
+    # Quick tips - collapsible
+    with st.expander("💡 Quick Tips", expanded=False):
+        st.markdown("""
+        - Ask about **characters** 🏴‍☠️  
+        - Explore **story arcs** 📖  
+        - Discover **abilities** ⚡  
+        - Learn about **locations** 🗺️
+        """)
+    
+    # System info - collapsible
+    with st.expander("📌 System Info", expanded=False):
+        st.markdown("""
+        - **LLM:** Groq Cloud (LLaMA 3.1)
+        - **Embeddings:** FastEmbed
+        - **Database:** SQLite (2,300+ notes)
+        """)
+    
+    # Footer
     st.markdown("---")
-
-    # Quick tips
-    st.markdown('<div class="info-card">', unsafe_allow_html=True)
-    st.markdown("### 💡 Quick Tips")
-    st.markdown(
-        """
-    - Ask about **characters** 🏴‍☠️  
-    - Explore **story arcs** 📖  
-    - Discover **abilities** ⚡  
-    - Learn about **locations** 🗺️  
-    """
-    )
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("""
+    <div style="text-align: center; color: #666; font-size: 0.75rem;">
+        <p>Made with ❤️ for One Piece fans</p>
+        <p><a href="https://github.com/zakariabouy/onepiece-bot" target="_blank" style="color: #888;">GitHub</a></p>
+    </div>
+    """, unsafe_allow_html=True)
 
 # ---------- Session State ----------
 if "messages" not in st.session_state:
