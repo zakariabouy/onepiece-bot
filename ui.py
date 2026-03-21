@@ -7,7 +7,9 @@ import sys
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
-from core import rag_chat, load_notes_and_build_index
+from src.chat import rag_chat
+from src.embeddings import load_notes_and_build_index
+from src.theory import evaluate_theory
 
 import base64
 from pathlib import Path
@@ -474,43 +476,64 @@ with st.sidebar:
     """, unsafe_allow_html=True)
     
     st.markdown("---")
+    
+    # Mode selector
+    st.markdown("### 🎯 Mode")
+    app_mode = st.radio(
+        "Choose mode:",
+        ["💬 Chat", "🎲 Theory Scorer"],
+        label_visibility="collapsed"
+    )
+    
+    st.markdown("---")
 
     # Clear chat button - full width, styled
     if st.button("🧹 Clear Chat", use_container_width=True, type="secondary"):
         st.session_state.pop("messages", None)
+        st.session_state.pop("theory_result", None)
         st.rerun()
 
     st.markdown("---")
     
-    # Settings section
-    st.markdown("### ⚙️ Settings")
-    
-    k_val = st.slider(
-        "📊 Passages to retrieve",
-        1,
-        10,
-        5,
-        help="Number of relevant passages to search",
-    )
-    temp_val = st.slider(
-        "🌡️ Temperature",
-        0.0,
-        1.0,
-        0.5,
-        0.1,
-        help="Higher = more creative responses",
-    )
+    # Settings section (only for chat mode)
+    if app_mode == "💬 Chat":
+        st.markdown("### ⚙️ Settings")
+        
+        k_val = st.slider(
+            "📊 Passages to retrieve",
+            1,
+            10,
+            5,
+            help="Number of relevant passages to search",
+        )
+        temp_val = st.slider(
+            "🌡️ Temperature",
+            0.0,
+            1.0,
+            0.5,
+            0.1,
+            help="Higher = more creative responses",
+        )
 
+        st.markdown("---")
     st.markdown("---")
 
     # Quick tips - collapsible
     with st.expander("💡 Quick Tips", expanded=False):
-        st.markdown("""
-        - Ask about **characters** 🏴‍☠️  
-        - Explore **story arcs** 📖  
-        - Discover **abilities** ⚡  
-        - Learn about **locations** 🗺️
-        """)
+        if app_mode == "💬 Chat":
+            st.markdown("""
+            - Ask about **characters** 🏴‍☠️  
+            - Explore **story arcs** 📖  
+            - Discover **abilities** ⚡  
+            - Learn about **locations** 🗺️
+            """)
+        else:
+            st.markdown("""
+            - Enter your **theory** clearly 📝
+            - Add **evidence** for bonus points 📚
+            - Score range: **0-1000** 🎯
+            - Watch for **debunked patterns** ⚠️
+            """)
     
     # System info - collapsible
     with st.expander("📌 System Info", expanded=False):
@@ -518,6 +541,7 @@ with st.sidebar:
         - **LLM:** Groq Cloud (LLaMA 3.1)
         - **Embeddings:** FastEmbed
         - **Database:** SQLite (2,300+ notes)
+        - **Theory Data:** 168 entries
         """)
     
     # Footer
@@ -532,112 +556,307 @@ with st.sidebar:
 # ---------- Session State ----------
 if "messages" not in st.session_state:
     st.session_state.messages = []
+if "theory_result" not in st.session_state:
+    st.session_state.theory_result = None
+if "pending_query" not in st.session_state:
+    st.session_state.pending_query = None
 
-# ---------- Chat Display ----------
-chat_container = st.container()
-
-with chat_container:
-    if not st.session_state.messages:
-        # Welcome message with example queries
-        st.markdown(
-            """
-        <div class="welcome-box">
-            <h3>👋 Welcome aboard the Thousand Sunny!</h3>
-            <p>🏴‍☠️ I'm your guide to the One Piece universe</p>
-            <p>Ask me anything about characters, arcs, events, and more!</p>
-            <div class="example-queries">
-                <div class="example-query">🎩 Tell me about Luffy</div>
-                <div class="example-query">⚔️ What is Marineford?</div>
-                <div class="example-query">🍊 Who is Nami?</div>
-                <div class="example-query">🌊 Explain Devil Fruits</div>
-            </div>
-        </div>
-        """,
-            unsafe_allow_html=True,
-        )
-    else:
-        # Display messages using Streamlit's chat components
-        for role, content, passages in st.session_state.messages:
-            with st.chat_message(role, avatar="👤" if role == "user" else "🏴‍☠️"):
-                st.markdown(content)
-                if role == "assistant" and passages:
-                    passage_count = len(passages)
-                    st.markdown(
-                        f'<span class="sources-badge">📚 {passage_count} source{"s" if passage_count != 1 else ""}</span>',
-                        unsafe_allow_html=True,
-                    )
-
-# ---------- Chat Input ----------
-user_msg = st.chat_input("💬 Type your message here...")
-
-if user_msg:
-    # Add user message
-    st.session_state.messages.append(("user", user_msg, []))
-
-    # Display user message immediately
-    with st.chat_message("user", avatar="👤"):
-        st.markdown(user_msg)
-
-    # Build conversation history for context
-    history = []
-    for role, content, _ in st.session_state.messages[:-1]:  # Exclude the just-added user message
-        history.append({"role": role, "content": content})
+# ========== THEORY SCORER MODE ==========
+if app_mode == "🎲 Theory Scorer":
+    st.markdown(
+        '<p class="subtitle">🎲 Rate your One Piece theories (0-1000) 🎲</p>',
+        unsafe_allow_html=True,
+    )
     
-    # Get bot response with conversation memory
-    with st.chat_message("assistant", avatar="🏴‍☠️"):
-        with st.spinner("🤔 Thinking..."):
-            res = rag_chat(user_msg, k=k_val, temperature=temp_val, history=history)
-
-        reply = res.get("reply", "Sorry, I don't know.")
-        passages = res.get("passages", [])
-
-        # Only show character image if question is ABOUT that character
-        char_info = find_character_image(user_msg, reply)
-        if char_info:
-            char_name, img_path = char_info
-            col1, col2 = st.columns([1, 3])
-            with col1:
-                st.image(str(img_path), caption=char_name, width=150)
-            with col2:
-                st.markdown(reply)
+    # Theory input area
+    st.markdown("""
+    <div class="welcome-box" style="padding: 1.5rem;">
+        <h3 style="margin-bottom: 0.5rem;">📝 Enter Your Theory</h3>
+        <p style="font-size: 0.9rem; opacity: 0.8;">Describe your theory and any evidence you have</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    theory_input = st.text_area(
+        "Your Theory",
+        placeholder="Example: Shanks is secretly working with the World Government because...",
+        height=120,
+        label_visibility="collapsed"
+    )
+    
+    evidence_input = st.text_area(
+        "Supporting Evidence (optional)",
+        placeholder="Example: He met with the Gorosei in chapter 907. He stopped the war at Marineford...",
+        height=80,
+        label_visibility="collapsed"
+    )
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        score_button = st.button("🎯 Score My Theory", use_container_width=True, type="primary")
+    
+    if score_button and theory_input.strip():
+        with st.spinner("🔍 Analyzing your theory against 166 canon sources..."):
+            result = evaluate_theory(theory_input, evidence_input)
+            st.session_state.theory_result = result
+    
+    # Display result
+    if st.session_state.theory_result:
+        result = st.session_state.theory_result
+        score = result["score"]
+        
+        # Score color based on value
+        if score >= 700:
+            score_color = "#22c55e"  # Green
+            bg_gradient = "linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(16, 185, 129, 0.2))"
+        elif score >= 500:
+            score_color = "#eab308"  # Yellow
+            bg_gradient = "linear-gradient(135deg, rgba(234, 179, 8, 0.2), rgba(245, 158, 11, 0.2))"
+        elif score >= 300:
+            score_color = "#f97316"  # Orange
+            bg_gradient = "linear-gradient(135deg, rgba(249, 115, 22, 0.2), rgba(239, 68, 68, 0.2))"
         else:
-            st.markdown(reply)
+            score_color = "#ef4444"  # Red
+            bg_gradient = "linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(220, 38, 38, 0.2))"
+        
+        # Map plain verdict to display with emoji
+        verdict_display = {
+            "HIGHLY PLAUSIBLE": "🔥 HIGHLY PLAUSIBLE",
+            "INTERESTING": "✨ INTERESTING",
+            "NEEDS MORE EVIDENCE": "🤔 NEEDS MORE EVIDENCE",
+            "WEAK": "⚠️ WEAK",
+            "UNLIKELY": "❌ UNLIKELY",
+        }.get(result["verdict"], result["verdict"])
 
-        if passages:
-            passage_count = len(passages)
+        # Big score display
+        st.markdown(f"""
+        <div style="text-align: center; padding: 2rem; background: {bg_gradient}; border-radius: 20px; margin: 1.5rem 0; border: 2px solid {score_color}40;">
+            <h1 style="font-size: 4rem; margin: 0; color: {score_color}; text-shadow: 0 0 20px {score_color}40;">{score}</h1>
+            <p style="font-size: 1.5rem; margin: 0.5rem 0; color: #e5e7eb;">/1000</p>
+            <h2 style="margin-top: 1rem; color: #e5e7eb;">{verdict_display}</h2>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Score breakdown
+        st.markdown("### 📊 Score Breakdown")
+        breakdown_cols = st.columns(len(result["breakdown"]))
+        for i, (key, value) in enumerate(result["breakdown"].items()):
+            with breakdown_cols[i]:
+                display_key = key.replace("_", " ").title()
+                color = "#22c55e" if str(value).startswith("+") else "#ef4444" if str(value).startswith("-") else "#e5e7eb"
+                st.markdown(f"""
+                <div style="text-align: center; padding: 0.8rem; background: rgba(15,23,42,0.8); border-radius: 10px;">
+                    <p style="font-size: 0.75rem; color: #888; margin: 0;">{display_key}</p>
+                    <p style="font-size: 1.3rem; font-weight: bold; color: {color}; margin: 0;">{value}</p>
+                </div>
+                """, unsafe_allow_html=True)
+        
+        # Dimension scores
+        if result.get("dimensions"):
+            st.markdown("### 🎯 Dimension Scores")
+            dim_labels = {
+                "THEMATIC_FIT": ("Thematic Fit", "Alignment with OP themes"),
+                "NARRATIVE_STYLE": ("Narrative Style", "How Oda-like is this?"),
+                "POWER_CONSISTENCY": ("Power Logic", "Respects world rules?"),
+                "EVIDENCE_QUALITY": ("Evidence", "Strength of arguments"),
+                "ORIGINALITY": ("Originality", "Fresh take?"),
+            }
+            dim_cols = st.columns(len(result["dimensions"]))
+            for i, (key, val) in enumerate(result["dimensions"].items()):
+                label, tooltip = dim_labels.get(key, (key, ""))
+                # Color: 1-2 red, 3 neutral, 4-5 green
+                if val >= 4:
+                    bar_color = "#22c55e"
+                elif val >= 3:
+                    bar_color = "#eab308"
+                else:
+                    bar_color = "#ef4444"
+                filled = val * 20  # percentage of 5
+                with dim_cols[i]:
+                    st.markdown(f"""
+                    <div style="text-align: center; padding: 0.6rem; background: rgba(15,23,42,0.8); border-radius: 10px;" title="{tooltip}">
+                        <p style="font-size: 0.7rem; color: #888; margin: 0 0 0.3rem 0;">{label}</p>
+                        <p style="font-size: 1.4rem; font-weight: bold; color: {bar_color}; margin: 0;">{val}/5</p>
+                        <div style="background: rgba(255,255,255,0.1); border-radius: 4px; height: 6px; margin-top: 0.4rem;">
+                            <div style="background: {bar_color}; width: {filled}%; height: 100%; border-radius: 4px;"></div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+        # Analysis
+        if result.get("analysis"):
+            st.markdown("### 🤖 AI Analysis")
+            st.markdown(f"""
+            <div style="background: rgba(15,23,42,0.8); padding: 1.2rem; border-radius: 12px; border-left: 4px solid #4f46e5;">
+                <p style="color: #e5e7eb; margin: 0; line-height: 1.6;">{result['analysis']}</p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # Supporting evidence found
+        if result.get("supporting_evidence"):
+            with st.expander("📚 Supporting Canon Evidence Found", expanded=True):
+                for i, ev in enumerate(result["supporting_evidence"], 1):
+                    st.markdown(f"""
+                    <div style="background: rgba(34, 197, 94, 0.1); padding: 0.8rem; border-radius: 8px; margin: 0.5rem 0; border-left: 3px solid #22c55e;">
+                        <span style="color: #22c55e; font-weight: bold;">[{ev['type'].upper()}]</span>
+                        <span style="color: #e5e7eb;"> {ev['summary']}...</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+        
+        # Canon evidence (NLI results)
+        if result.get("canon_evidence"):
+            with st.expander("📖 Canon Passage Analysis", expanded=True):
+                for ev in result["canon_evidence"]:
+                    if ev["relation"] == "SUPPORTS":
+                        border = "#22c55e"
+                        icon = "✅"
+                        bg = "rgba(34, 197, 94, 0.1)"
+                    else:
+                        border = "#ef4444"
+                        icon = "❌"
+                        bg = "rgba(239, 68, 68, 0.1)"
+                    st.markdown(f"""
+                    <div style="background: {bg}; padding: 0.8rem; border-radius: 8px; margin: 0.5rem 0; border-left: 3px solid {border};">
+                        <span style="color: {border}; font-weight: bold;">{icon} {ev['relation']}</span>
+                        <span style="color: #e5e7eb;"> {ev['title']}</span>
+                        <p style="color: #9ca3af; margin: 0.3rem 0 0 0; font-size: 0.85rem;">{ev.get('reasoning', '')}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+        # Warnings
+        if result.get("warnings"):
+            with st.expander("⚠️ Pattern Warnings", expanded=True):
+                for warning in result["warnings"]:
+                    st.markdown(f"""
+                    <div style="background: rgba(239, 68, 68, 0.1); padding: 0.8rem; border-radius: 8px; margin: 0.5rem 0; border-left: 3px solid #ef4444;">
+                        <span style="color: #ef4444;">⚠️ {warning}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+        # Foreshadowing patterns
+        if result.get("foreshadowing_matches"):
+            st.markdown(f"**🔮 Foreshadowing patterns matched:** {', '.join(result['foreshadowing_matches'])}")
+
+# ========== CHAT MODE ==========
+else:
+    # ---------- Chat Display ----------
+    chat_container = st.container()
+
+    with chat_container:
+        if not st.session_state.messages:
+            # Welcome message with example queries
             st.markdown(
-                f'<span class="sources-badge">📚 {passage_count} source{"s" if passage_count != 1 else ""}</span>',
+                """
+            <div class="welcome-box">
+                <h3>👋 Welcome aboard the Thousand Sunny!</h3>
+                <p>🏴‍☠️ I'm your guide to the One Piece universe</p>
+                <p>Ask me anything about characters, arcs, events, and more!</p>
+            </div>
+            """,
                 unsafe_allow_html=True,
             )
+            
+            # Clickable example queries
+            st.markdown("<p style='text-align: center; color: #888; margin-top: 1rem;'>Try one of these:</p>", unsafe_allow_html=True)
+            cols = st.columns(4)
+            example_queries = [
+                ("🎩", "Tell me about Luffy"),
+                ("⚔️", "What is Marineford?"),
+                ("🍊", "Who is Nami?"),
+                ("🌊", "Explain Devil Fruits"),
+            ]
+            for i, (emoji, query) in enumerate(example_queries):
+                with cols[i]:
+                    if st.button(f"{emoji} {query}", key=f"example_{i}", use_container_width=True):
+                        st.session_state.pending_query = query
+                        st.rerun()
+        else:
+            # Display messages using Streamlit's chat components
+            for role, content, passages in st.session_state.messages:
+                with st.chat_message(role, avatar="👤" if role == "user" else "🏴‍☠️"):
+                    st.markdown(content)
+                    if role == "assistant" and passages:
+                        passage_count = len(passages)
+                        st.markdown(
+                            f'<span class="sources-badge">📚 {passage_count} source{"s" if passage_count != 1 else ""}</span>',
+                            unsafe_allow_html=True,
+                        )
 
-        # Add bot message to history
-        st.session_state.messages.append(("assistant", reply, passages))
+    # ---------- Chat Input ----------
+    user_msg = st.chat_input("💬 Type your message here...")
+    
+    # Check for pending query from example buttons
+    if st.session_state.pending_query:
+        user_msg = st.session_state.pending_query
+        st.session_state.pending_query = None
 
-# ---------- Show source details in expander ----------
-if st.session_state.messages:
-    last_role, last_content, last_passages = st.session_state.messages[-1]
-    if last_role == "assistant" and last_passages:
-        with st.expander("🔍 View Source Details", expanded=False):
-            for i, p in enumerate(last_passages, 1):
-                title = p.get("title", "(untitled)")
-                arc = p.get("arc", "?")
-                score = p.get("score", 0.0)
-                text = (
-                    p.get("text", "")[:200] + "..."
-                    if len(p.get("text", "")) > 200
-                    else p.get("text", "")
-                )
+    if user_msg:
+        # Add user message
+        st.session_state.messages.append(("user", user_msg, []))
 
+        # Display user message immediately
+        with st.chat_message("user", avatar="👤"):
+            st.markdown(user_msg)
+
+        # Build conversation history for context
+        history = []
+        for role, content, _ in st.session_state.messages[:-1]:  # Exclude the just-added user message
+            history.append({"role": role, "content": content})
+        
+        # Get bot response with conversation memory
+        with st.chat_message("assistant", avatar="🏴‍☠️"):
+            with st.spinner("🤔 Thinking..."):
+                res = rag_chat(user_msg, k=k_val, temperature=temp_val, history=history)
+
+            reply = res.get("reply", "Sorry, I don't know.")
+            passages = res.get("passages", [])
+
+            # Only show character image if question is ABOUT that character
+            char_info = find_character_image(user_msg, reply)
+            if char_info:
+                char_name, img_path = char_info
+                col1, col2 = st.columns([1, 3])
+                with col1:
+                    st.image(str(img_path), caption=char_name, width=150)
+                with col2:
+                    st.markdown(reply)
+            else:
+                st.markdown(reply)
+
+            if passages:
+                passage_count = len(passages)
                 st.markdown(
-                    f"""
-                <div style="background: rgba(15,23,42,0.8); padding: 1rem; border-radius: 10px; margin: 0.5rem 0; border-left: 4px solid #4f46e5;">
-                    <strong style="color: #e5e7eb; font-size: 1.05rem;">[{i}] {title}</strong><br>
-                    <span style="color: #cbd5f5;">📖 Arc: <code>{arc}</code> | 🎯 Relevance: <code>{score:.3f}</code></span><br>
-                    <p style="margin-top: 0.5rem; color: #e5e7eb;">{text}</p>
-                </div>
-                """,
+                    f'<span class="sources-badge">📚 {passage_count} source{"s" if passage_count != 1 else ""}</span>',
                     unsafe_allow_html=True,
                 )
+
+            # Add bot message to history
+            st.session_state.messages.append(("assistant", reply, passages))
+
+    # ---------- Show source details in expander ----------
+    if st.session_state.messages:
+        last_role, last_content, last_passages = st.session_state.messages[-1]
+        if last_role == "assistant" and last_passages:
+            with st.expander("🔍 View Source Details", expanded=False):
+                for i, p in enumerate(last_passages, 1):
+                    title = p.get("title", "(untitled)")
+                    arc = p.get("arc", "?")
+                    score = p.get("score", 0.0)
+                    text = (
+                        p.get("text", "")[:200] + "..."
+                        if len(p.get("text", "")) > 200
+                        else p.get("text", "")
+                    )
+
+                    st.markdown(
+                        f"""
+                    <div style="background: rgba(15,23,42,0.8); padding: 1rem; border-radius: 10px; margin: 0.5rem 0; border-left: 4px solid #4f46e5;">
+                        <strong style="color: #e5e7eb; font-size: 1.05rem;">[{i}] {title}</strong><br>
+                        <span style="color: #cbd5f5;">📖 Arc: <code>{arc}</code> | 🎯 Relevance: <code>{score:.3f}</code></span><br>
+                        <p style="margin-top: 0.5rem; color: #e5e7eb;">{text}</p>
+                    </div>
+                    """,
+                        unsafe_allow_html=True,
+                    )
 
 # ---------- Footer ----------
 st.markdown("---")
