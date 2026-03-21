@@ -1,113 +1,121 @@
-# 🏴‍☠️ One Piece RAG Chatbot
+# One Piece Bot
 
-An AI-powered chatbot that answers questions about One Piece using **Retrieval-Augmented Generation (RAG)**.
+AI chatbot for One Piece with a theory evaluation system. Chat about the story using RAG-powered search across 2,000+ canon sources, or submit fan theories and get them scored against canon evidence.
 
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://onepiece-bot.streamlit.app)
+## Features
 
-## ✨ Features
+**Chat** — Ask anything about One Piece. The bot retrieves relevant passages from a knowledge base of chapter summaries, character profiles, and lore notes, then generates answers with source citations.
 
-- 🤖 **AI-Powered Answers**: Uses Groq's LLaMA 3.1 for fast, accurate responses
-- 📚 **RAG Architecture**: Retrieves relevant information from 2,300+ One Piece sources
-- 🔍 **Semantic Search**: FastEmbed embeddings for intelligent context matching
-- 💬 **Conversation Memory**: Remembers context from previous messages
-- 🖼️ **Character Images**: Shows character portraits when discussing them
-- ⚡ **Fast Responses**: 2-5 second response times via Groq cloud
+**Theory Scorer** — Submit a fan theory and get a multi-dimensional analysis:
+- Semantic search against SBS data, Oda interviews, foreshadowing patterns, and debunked theories
+- Canon database search with cross-encoder reranking
+- NLI (Natural Language Inference) contradiction detection
+- 5-dimension scoring: Thematic Fit, Narrative Style, Power Consistency, Evidence Quality, Originality
 
-## 🚀 Quick Start
+## Architecture
+
+```
+Next.js (frontend)  -->  FastAPI (backend)  -->  Groq (fast chat)
+                                            -->  Cerebras 235B (theory analysis)
+                                            -->  FastEmbed (semantic search)
+                                            -->  SQLite (canon database)
+```
+
+- **Chat LLM**: Groq (llama-3.1-8b-instant) for fast responses
+- **Theory LLM**: Cerebras (qwen-3-235b-a22b-instruct-2507) for deep analysis, falls back to Groq
+- **Embeddings**: FastEmbed (BAAI/bge-small-en-v1.5) with disk caching
+- **Reranking**: Cross-encoder (Xenova/ms-marco-MiniLM-L-6-v2)
+
+## Quick Start
 
 ### Prerequisites
 - Python 3.10+
-- [Groq API Key](https://console.groq.com/keys) (free!)
+- Node.js 18+
+- [Groq API Key](https://console.groq.com/keys) (free)
+- [Cerebras API Key](https://cloud.cerebras.ai/) (free, optional — improves theory scoring)
 
-### Local Installation
+### Setup
 
 ```bash
-# Clone the repository
 git clone https://github.com/zakariabouy/onepiece-bot.git
 cd onepiece-bot
 
-# Create virtual environment
+# Python backend
 python -m venv .venv
-.venv\Scripts\activate  # Windows
-# source .venv/bin/activate  # Linux/Mac
-
-# Install dependencies
+.venv\Scripts\activate        # Windows
+# source .venv/bin/activate   # Linux/Mac
 pip install -r requirements.txt
 
-# Set your Groq API key
-echo "GROQ_API_KEY=your_key_here" > .env
+# Frontend
+cd frontend
+npm install
+cd ..
 
-# Run the chatbot
-streamlit run ui.py
+# Environment variables
+cp .env.example .env
+# Edit .env and add your API keys
 ```
 
-## 🏗️ Architecture
+### Run
 
-```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   User      │────▶│  Streamlit  │────▶│   Groq      │
-│   Query     │     │   UI        │     │   LLM       │
-└─────────────┘     └──────┬──────┘     └─────────────┘
-                          │
-                    ┌─────▼─────┐
-                    │ FastEmbed │
-                    │ Embeddings│
-                    └─────┬─────┘
-                          │
-                    ┌─────▼─────┐
-                    │  SQLite   │
-                    │  Database │
-                    └───────────┘
+```bash
+# Terminal 1 — API server
+uvicorn api.main:app --reload --port 8000
+
+# Terminal 2 — Frontend
+cd frontend
+npm run dev
 ```
 
-## 📁 Project Structure
+Open [http://localhost:3000](http://localhost:3000).
+
+## Project Structure
 
 ```
 onepiece-bot/
-├── ui.py                    # 🎯 Main Streamlit app
-├── src/                     # 📦 Source code
-│   ├── __init__.py
-│   └── core.py              # RAG logic & Groq LLM
-├── data/                    # 📊 Data files
-│   ├── db/
-│   │   └── onepiece.db      # SQLite database
-│   ├── cache/
-│   │   └── embeddings_cache.npz
-│   ├── assets/
-│   │   ├── bg.jpeg          # Background image
-│   │   ├── chapters.csv     # Chapter data
-│   │   └── notes.jsonl      # Character notes
-│   └── characters/          # Character images (56+)
-├── scripts/                 # 🔧 Data utilities
-├── tests/                   # 🧪 Unit tests
-├── notebooks/               # 📓 Jupyter notebooks
-├── .streamlit/              # Streamlit config
+├── api/                     # FastAPI backend
+│   ├── main.py              # App entry, CORS, static mounts
+│   ├── schemas.py           # Pydantic request/response models
+│   └── routes/
+│       ├── chat.py          # POST /api/chat
+│       ├── theory.py        # POST /api/theory/evaluate
+│       └── health.py        # GET /api/health
+├── src/                     # Core logic
+│   ├── config.py            # Paths, model names, API key helpers
+│   ├── llm.py               # Dual LLM client (Groq + Cerebras)
+│   ├── embeddings.py        # Embedding, search, caching, reranking
+│   ├── chat.py              # RAG chat pipeline
+│   ├── theory.py            # Theory evaluation pipeline
+│   └── core.py              # Re-exports for backwards compatibility
+├── frontend/                # Next.js 14 app
+│   ├── src/app/             # Pages (chat, theory)
+│   ├── src/components/      # Shared components
+│   ├── src/lib/             # API client, types
+│   └── public/              # Static assets
+├── data/
+│   ├── db/onepiece.db       # SQLite canon database
+│   ├── assets/              # JSONL theory data, images
+│   ├── cache/               # Embedding caches
+│   └── characters/          # Character portrait images
+├── ui.py                    # Legacy Streamlit UI
 ├── requirements.txt
 └── .env                     # API keys (not in git)
 ```
 
-## 🔧 Environment Variables
+## Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `GROQ_API_KEY` | Required | Your Groq API key |
-| `GROQ_MODEL` | `llama-3.1-8b-instant` | LLM model to use |
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `GROQ_API_KEY` | Yes | Groq API key for chat |
+| `CEREBRAS_API_KEY` | No | Cerebras API key for theory scoring (falls back to Groq) |
+| `GROQ_MODEL` | No | Override chat model (default: `llama-3.1-8b-instant`) |
+| `CEREBRAS_MODEL` | No | Override theory model (default: `qwen-3-235b-a22b-instruct-2507`) |
 
-## 📊 Data Sources
+## Data Sources
 
-- 1,158 Chapter summaries (up to Chapter 1130+)
-- 25+ Character profiles with images
-- 20+ Devil Fruit details
-- 56+ Character portrait images
-
-## 🚀 Deploy to Streamlit Cloud
-
-1. Push this repo to GitHub
-2. Go to [share.streamlit.io](https://share.streamlit.io)
-3. Connect your GitHub repo
-4. Add `GROQ_API_KEY` in Secrets
-5. Deploy!
-
----
-
-*"I'm gonna be King of the Pirates!"* - Monkey D. Luffy 🏴‍☠️
+- 2,295 canon notes (chapter summaries, character profiles, lore)
+- 59 SBS Q&A entries
+- 36 Oda interview excerpts
+- 39 foreshadowing patterns
+- 34 debunked theories
+- 56+ character portrait images
